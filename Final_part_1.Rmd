@@ -1,0 +1,204 @@
+---
+title: "Final Project Part 1"
+date: "11/16/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+```
+
+## Get Current Data
+
+```{r}
+url_in <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+```
+
+
+## Read in the Data Set
+```{r}
+NYPD_Shooting_incident_data <- read_csv(url_in)
+```
+
+## Tidy the Data Set and show the summary
+I drop all the columns related to pinpoint location data, and also the location description column.  There were too many NA's in the location description column, so the data would not give us very accurate insight if used.
+```{r}
+Shooting_incident <- NYPD_Shooting_incident_data %>%
+  select(-c(Lon_Lat, X_COORD_CD, Y_COORD_CD, Longitude, Latitude, LOCATION_DESC)) %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE)) %>%
+  mutate(OCCUR_TIME = hour(hms(OCCUR_TIME)))
+  
+Shooting_incident$OCCUR_TIME <- factor(Shooting_incident$OCCUR_TIME)
+Shooting_incident$PERP_SEX <- factor(Shooting_incident$PERP_SEX)
+Shooting_incident$PERP_AGE_GROUP <- factor(Shooting_incident$PERP_AGE_GROUP)
+Shooting_incident$PERP_RACE <- factor(Shooting_incident$PERP_RACE)
+
+Shooting_incident$BORO <- factor(Shooting_incident$BORO)
+Shooting_incident$PRECINCT <- factor(Shooting_incident$PRECINCT)
+Shooting_incident$JURISDICTION_CODE <- factor(Shooting_incident$JURISDICTION_CODE)
+
+Shooting_incident$VIC_SEX <- factor(Shooting_incident$VIC_SEX)
+Shooting_incident$VIC_AGE_GROUP <- factor(Shooting_incident$VIC_AGE_GROUP)
+Shooting_incident$VIC_RACE <- factor(Shooting_incident$VIC_RACE)
+
+summary(Shooting_incident)
+
+
+```
+
+I noticed there were data entry errors in the PERP_AGE_GROUP column, so I will remove the 3 anomalies to preserve the good data.
+
+## Column before cleaning:
+```{r}
+summary(Shooting_incident$PERP_AGE_GROUP)
+```
+## Column after cleaning:
+```{r}
+Shooting_incident_cleaned <- Shooting_incident %>%
+  slice (-c(1407, 19669, 2915))
+
+summary(Shooting_incident_cleaned$PERP_AGE_GROUP)
+```
+
+
+## Explanation of missing values:
+For missing values under PERP_AGE_GROUP, PERP_SEX, and PERP_RACE I will be dropping the rows that are missing the fields when using the columns as factors in order not to create unintentional bias.
+
+# Visualizations
+To start with, I will create a graph plotting which sex occurs more often based on race and age group.
+
+```{r}
+
+ggplot(data = Shooting_incident_cleaned) + 
+  geom_point(size = 3, mapping = aes(x = VIC_AGE_GROUP, y = VIC_RACE, color = VIC_SEX)) + 
+  theme(axis.text.x = element_text(size = 8)) + 
+  ggtitle("NYPD Shooting Victim Statistics") + 
+  labs(x = "Age Group", y = "Race", color = "Sex")
+
+```
+I will now do the same for the shooting perpetrator group.
+```{r}
+ggplot(data = Shooting_incident_cleaned) + 
+  geom_point(size = 3, mapping = aes(x = PERP_AGE_GROUP, y = PERP_RACE, color = PERP_SEX)) + 
+  theme(axis.text.x = element_text(size = 8)) + 
+  ggtitle("NYPD Shooting Perpetrator Statistics") + 
+  labs(x = "Age Group", y = "Race", color = "Sex")
+```
+Looking at the data, we can see some interesting statistics regarding both groups.  Specifically, that the majority of perpertrators and victims are both overwhelmingly male.  Some interesting subsets where the majority are female are: White hispanic victims under the age of 18, asian/pacific islander victims from the ages of 25-44, and  white, black, and asian/pacific islander victims over the age of 65.
+
+## Precincts with the most and least amount of shooting incidents visualized:
+
+```{r}
+precinct_occurences  <- Shooting_incident_cleaned %>%
+  group_by(PRECINCT) %>%
+  summarize(count = n())
+
+precinct_occurences <- precinct_occurences[with(precinct_occurences, order(-count)),]
+ggplot(precinct_occurences[1:25,], aes(x=PRECINCT, y=count)) +
+  geom_bar(stat="identity", width = 0.75) +
+  labs(x = "Precinct Number", y = "Incident Count") +
+  ggtitle("NYPD Shooting Incident Count: Top 25 Precincts with the most incidents") +
+  theme_minimal()
+
+top_5_prec_count <- precinct_occurences[1:5,]
+top_5_prec <- top_5_prec_count$PRECINCT[1:5]
+
+top_prec <- Shooting_incident_cleaned[Shooting_incident_cleaned$PRECINCT == top_5_prec,]
+
+ggplot(top_prec, aes(factor(PERP_AGE_GROUP),)) +
+  geom_bar(stat="count", position="dodge") + 
+  labs(x = "Perpetrator Age Group", y = "Incident Count") +
+  ggtitle("Number of Incidents based on Perpetrator Age Group ") +
+  theme_minimal()
+
+ggplot(top_prec, aes(factor(PERP_AGE_GROUP), fill=PERP_SEX)) +
+  geom_bar(stat="count", position="dodge") +
+  labs(x = "Perpetrator Age Group", y = "Incident Count", fill = "Perpetrator Sex") +
+  ggtitle("Number of Incidents based on Perpetrator Age Group and Sex") +
+  theme_minimal()
+  
+ggplot(top_prec, aes(factor(PERP_AGE_GROUP), fill=PERP_RACE)) +
+  geom_bar(stat="count") + 
+  labs(x = "Perpetrator Age Group", y = "Incident Count", fill = "Perpetrator Race") +
+  ggtitle("Number of Incidents based on Perpetrator Age Group and Race") +
+  theme_minimal()
+
+
+```
+```{r}
+ggplot(top_prec, aes(factor(BORO), fill=VIC_AGE_GROUP)) +
+  geom_bar(stat="count") +
+  labs(x = "Borough Incident Occured", y = "Incident Count", fill = "Victim Age Group") +
+  ggtitle("Number of Incidents in Top 5 Precincts with the Most Incidents \n based on Borough and Victim Age Group ") +
+  theme_minimal()
+
+ggplot(top_prec, aes(factor(BORO), fill=VIC_SEX)) +
+  geom_bar(stat="count") +
+  labs(x = "Borough Incident Occured", y = "Incident Count", fill = "Victim Sex") +
+  ggtitle("Number of Incidents in Top 5 Precincts with the Most Incidents \n based on Borough and Victim Sex ") +
+  theme_minimal()
+
+ggplot(top_prec, aes(factor(BORO), fill=PERP_AGE_GROUP)) +
+  geom_bar(stat="count") +
+  labs(x = "Borough Incident Occured", y = "Incident Count", fill = "Perpetrator Age Group") +
+  ggtitle("Number of Incidents in Top 5 Precincts with the Most Incidents \n based on Borough and Perpetrator Age Group ") +
+  theme_minimal()
+
+ggplot(top_prec, aes(factor(BORO), fill=PERP_SEX)) +
+  geom_bar(stat="count") + 
+  labs(x = "Borough Incident Occured", y = "Incident Count", fill = "Perpetrator Sex") +
+  ggtitle("Number of Incidents in Top 5 Precincts with the Most Incidents \n based on Borough and Perpetrator Sex ") +
+  theme_minimal()
+```
+
+
+```{r}
+precinct_occurences  <- Shooting_incident_cleaned %>%
+  group_by(PRECINCT) %>%
+  summarize(count = n())
+
+precinct_occurences <- precinct_occurences[with(precinct_occurences, order(count)),]
+ggplot(precinct_occurences[1:25,], aes(x=PRECINCT, y=count)) +
+  geom_bar(stat="identity", width = 0.75) +
+  labs(x = "Precinct Number", y = "Incident Count") +
+  ggtitle("NYPD Shooting Incident Count: Top 25 Precincts with the least incidents") +
+  theme_minimal()
+  
+```
+These are the top 25 precincts with the least shooting incidents in New York.  This data may be useful for folks that are looking to find a safe place to live -- although this is just one of the factors of many.
+
+```{r}
+m2 = lm(STATISTICAL_MURDER_FLAG~OCCUR_TIME, data = Shooting_incident_cleaned)
+m1 = glm(STATISTICAL_MURDER_FLAG~OCCUR_TIME, family="poisson", data = Shooting_incident_cleaned)
+summary(m2)
+summary(m1)
+```
+```{r}
+ggplot(Shooting_incident_cleaned, aes(factor(OCCUR_TIME), fill=BORO)) +
+  geom_bar(stat="count") +
+  labs(x = "Hour of Incident", y = "Incident Count", fill = "Borough of Incident") +
+  ggtitle("Incidents by Borough")
+
+ggplot(Shooting_incident_cleaned[Shooting_incident_cleaned$STATISTICAL_MURDER_FLAG == TRUE,], aes(factor(BORO))) +
+  geom_bar(stat="count") +
+  labs(x = "Borough", y = "Murder Count") +
+  ggtitle("Incidents that Resulted in Murders by Borough")
+
+murder_set = Shooting_incident_cleaned[Shooting_incident_cleaned$STATISTICAL_MURDER_FLAG == TRUE,]
+
+ggplot(murder_set[murder_set$BORO == 'BROOKLYN',], aes(factor(OCCUR_TIME))) +
+  geom_bar(stat="count") +
+  labs(x = "Hour of Incident", y = "Murder Count") +
+  ggtitle("Incidents that Resulted in Murders in Brooklyn \n based on the Hour of Incident")
+  
+```
+
+
+
+## Bias and Conclusion
+In this specific report, I have tried to mitigate any bias by specifically only showing generic data/statistics.  I am not too passionate about this subject/dataset and thus do not want to make any hard conclusions or findings based off these statistics.  What I can conclude based off my limited analysis on this dataset, is that the majority of perpetrators and victims are both male.  There are few subsets in which they are are specifically more females, but overall there is an overwhelming majority of both male perpetrators and victims according to this dataset. 
+
+In conclusion, the one concrete thing we can get out of this analysis is that the overwhelming majority of perpetrators and victims are male.  Some interesting things I learned while analyzing the dataset is that Brooklyn is the borough with the most incidents, and consequently the borough where the most incidents result in murder.  This could be due to many factors like population, economic factors, or something similar so without these important aspects, we can’t really come to a concrete conclusion.  To conclude, this dataset and analysis may be useful to individuals that are worried about the safety in their specific borough or precinct compared to others.
